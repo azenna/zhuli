@@ -4,6 +4,10 @@ pub enum Primitive {
     Sub,
     Flip,
     Duplicate,
+    Drop,
+    LT,
+    GT,
+    Select,
 }
 
 impl Into<Token> for Primitive {
@@ -15,6 +19,8 @@ impl Into<Token> for Primitive {
 #[derive(Debug, Clone)]
 pub enum LiteralError {
     Unit,
+    NotNumber,
+    ExpectedWhole,
 }
 
 #[derive(Debug, Clone)]
@@ -23,26 +29,38 @@ pub enum Literal {
 }
 
 impl Literal {
-    pub fn add(self, other: Self) -> Result<Self, LiteralError> {
+    pub fn as_number(self) -> Result<f32, LiteralError> {
+        match self {
+            Literal::Number(f) => Ok(f),
+            _ => Err(LiteralError::NotNumber),
+        }
+    }
+    pub fn as_number_whole(self) -> Result<usize, LiteralError> {
+        self.as_number().and_then(|x| if x.fract() == 0f32 {Ok(x as usize)} else {Err(LiteralError::ExpectedWhole)})
+    }
+    pub fn dyadic_nums(self, other: Self, f: fn(f32, f32) -> f32) -> Result<Self, LiteralError>{
         match (self, other) {
-            (Literal::Number(a), Literal::Number(b)) => Ok(Literal::Number(a + b)),
+            (Literal::Number(a), Literal::Number(b)) => Ok(Literal::Number(f(a, b))),
             _ => Err(LiteralError::Unit),
         }
+    }
+    pub fn add(self, other: Self) -> Result<Self, LiteralError> {
+        self.dyadic_nums(other, |a, b| a + b)
+    }
+    pub fn sub(self, other: Self) -> Result<Self, LiteralError> {
+        self.dyadic_nums(other, |a, b| b - a )
+    }
+    pub fn lt(self, other: Self) -> Result<Self, LiteralError> {
+        self.dyadic_nums(other, |a, b| (b < a ) as u32 as f32)
+    }
+    pub fn gt(self, other: Self) -> Result<Self, LiteralError> {
+        self.dyadic_nums(other, |a, b| (b > a) as u32 as f32)
     }
 }
 
 impl Into<Token> for Literal {
     fn into(self) -> Token {
         Token::Lit(self)
-    }
-}
-
-impl Literal {
-    pub fn as_number(self) -> Option<f32> {
-        match self {
-            Literal::Number(f) => Some(f),
-            _ => None,
-        }
     }
 }
 
@@ -100,6 +118,11 @@ impl<'a> Lexer<'a> {
                 '.' => self.add_token(Duplicate),
                 '[' => self.add_token(LBracket),
                 ']' => self.add_token(RBracket),
+                '>' => self.add_token(GT),
+                '<' => self.add_token(LT),
+                ';' => self.add_token(Drop),
+                '⊏' => self.add_token(Select),
+
                 c if c.is_digit(10) => self.add_token(Number(c.to_digit(10).unwrap() as f32)),
                 _ => (),
             }
